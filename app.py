@@ -1,85 +1,70 @@
 import streamlit as st
-import pdfplumber
-from transformers import pipeline, PipelineException
+from PyPDF2 import PdfReader
+from transformers import pipeline, AutoTokenizer, AutoModel
+import faiss
+import numpy as np
+import torch
 
-# Function to extract text from a PDF
-def extract_text_from_pdf(uploaded_file):
-    text = ""
-    with pdfplumber.open(uploaded_file) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text
+# Function to read and extract text from a PDF
+def extract_text_from_pdf(pdf_file):
+    reader = PdfReader(pdf_file)
+    text = ''
+    for page in reader.pages:
+        text += page.extract_text()
     return text
 
-# Cached function to load summarization model
-@st.cache_resource
-def load_summarizer():
-    try:
-        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-        return summarizer
-    except Exception as e:
-        st.error(f"Error loading summarization model: {e}")
-        return None
+# Function to summarize the extracted text
+def summarize_text(text):
+    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
+    chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+    summary = ''
+    for chunk in chunks:
+        summary += summarizer(chunk, max_length=150, min_length=30, do_sample=False)[0]['summary_text'] + ' '
+    return summary.strip()
 
-# Cached function to load question-answering model
-@st.cache_resource
-def load_qa_model():
-    try:
-        qa_model = pipeline("question-answering")
-        return qa_model
-    except Exception as e:
-        st.error(f"Error loading question-answering model: {e}")
-        return None
+# Function to embed text using a Transformer model
+def embed_text(text, model, tokenizer):
+    inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True)
+    outputs = model(**inputs)
+    embeddings = outputs.last_hidden_state.mean(dim=1)
+    return embeddings.detach().numpy()
 
-# Function to summarize text
-def summarize_text(text, summarizer):
-    try:
-        summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
-        return summary[0]['summary_text']
-    except PipelineException as e:
-        st.error(f"Error during summarization: {e}")
-        return ""
+# Function to answer questions based on the extracted text using FAISS
+def answer_question(text_chunks, question, model, tokenizer, index):
+    question_embedding = embed_text(question, model, tokenizer)
+    _, I = index.search(question_embedding, k=1)
+    answer_context = text_chunks[I[0][0]]
+    return answer_context
 
-# Function to answer questions based on the text
-def answer_question(context, question, qa_model):
-    try:
-        result = qa_model(question=question, context=context)
-        return result['answer']
-    except PipelineException as e:
-        st.error(f"Error during question answering: {e}")
-        return ""
+# Streamlit app
+st.title("PDF Summarizer and QA Bot")
 
-# Streamlit app layout
-st.title('PDF Summarizer and Q&A Bot')
-uploaded_file = st.file_uploader('Upload a PDF', type='pdf')
+uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
 
 if uploaded_file is not None:
-    # Extract text from uploaded PDF
+    # Extract text from the uploaded PDF
     text = extract_text_from_pdf(uploaded_file)
+
+    # Summarize the extracted text
+    st.subheader("Summary")
+    summary = summarize_text(text)
+    st.write(summary)
+
+    # Prepare text chunks and embeddings for QA
+    text_chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
+    tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    model = AutoModel.from_pretrained("distilbert-base-uncased")
+    embeddings = np.vstack([embed_text(chunk, model, tokenizer) for chunk in text_chunks])
     
-    if text:
-        # Display extracted text
-        st.subheader("Extracted Text")
-        st.write(text)
+    # Use FAISS to build the index
+    index = faiss.IndexFlatL2(embeddings.shape[1])
+    index.add(embeddings)
 
-        # Load models
-        summarizer = load_summarizer()
-        qa_model = load_qa_model()
+    # QA Bot
+    st.subheader("Ask a Question")
+    question = st.text_input("Enter your question about the PDF:")
+    if question:
+        answer = answer_question(text_chunks, question, model, tokenizer, index)
+        st.write(f"Answer: {answer}")
 
-        if summarizer:
-            # Summarize the text
-            summary = summarize_text(text, summarizer)
-            st.subheader("Summary")
-            st.write(summary)
-        
-        # Question and Answer section
-        if qa_model:
-            st.subheader("Ask a Question about the PDF")
-            question = st.text_input("Enter your question")
-            if question:
-                answer = answer_question(text, question, qa_model)
-                st.write("Answer:")
-                st.write(answer)
-    else:
-        st.error("Failed to extract text from the PDF.")
+# Run the app with: streamlit run app.py
