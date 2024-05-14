@@ -1,6 +1,7 @@
 import streamlit as st
 import pdfplumber
 from transformers import pipeline
+from transformers.pipelines import PipelineException
 
 # Function to extract text from a PDF
 def extract_text_from_pdf(uploaded_file):
@@ -12,15 +13,23 @@ def extract_text_from_pdf(uploaded_file):
 
 # Function to summarize text
 def summarize_text(text):
-    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-    summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
-    return summary[0]['summary_text']
+    try:
+        summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+        summary = summarizer(text, max_length=150, min_length=50, do_sample=False)
+        return summary[0]['summary_text']
+    except PipelineException as e:
+        st.error(f"Error loading summarization model: {e}")
+        return ""
 
 # Function to answer questions based on the text
 def answer_question(context, question):
-    qa_model = pipeline("question-answering")
-    result = qa_model(question=question, context=context)
-    return result['answer']
+    try:
+        qa_model = pipeline("question-answering")
+        result = qa_model(question=question, context=context)
+        return result['answer']
+    except PipelineException as e:
+        st.error(f"Error loading question-answering model: {e}")
+        return ""
 
 # Streamlit app layout
 st.title('PDF Summarizer and Q&A Bot')
