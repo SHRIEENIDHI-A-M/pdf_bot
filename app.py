@@ -16,7 +16,7 @@ def extract_text_from_pdf(pdf_file):
 
 # Function to summarize the extracted text
 def summarize_text(text):
-    summarizer = pipeline('summarization', model='Snowflake/snowflake-arctic-instruct')
+    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
     chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
     summary = ''
     for chunk in chunks:
