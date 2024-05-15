@@ -16,11 +16,11 @@ def extract_text_from_pdf(pdf_file):
 
 # Function to summarize the extracted text
 def summarize_text(text):
-    summarizer = pipeline('summarization', model='facebook/bart-large-cnn')
+    summarizer = pipeline('summarization', model='Snowflake/snowflake-arctic-instruct')
     chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
     summary = ''
     for chunk in chunks:
-        summary += summarizer(chunk, max_length=1000, min_length=30, do_sample=False)[0]['summary_text'] + ' '
+        summary += summarizer(chunk, max_length=125, min_length=30, do_sample=False)[0]['summary_text'] + ' '
     return summary.strip()
 
 # Function to embed text using a Transformer model
