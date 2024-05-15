@@ -5,6 +5,7 @@ import faiss
 import numpy as np
 import torch
 
+@st.cache_resource(show_spinner = False)
 # Function to read and extract text from a PDF
 def extract_text_from_pdf(pdf_file):
     reader = PdfReader(pdf_file)
@@ -19,7 +20,7 @@ def summarize_text(text):
     chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
     summary = ''
     for chunk in chunks:
-        summary += summarizer(chunk, max_length=150, min_length=30, do_sample=False)[0]['summary_text'] + ' '
+        summary += summarizer(chunk, max_length=1000, min_length=30, do_sample=False)[0]['summary_text'] + ' '
     return summary.strip()
 
 # Function to embed text using a Transformer model
